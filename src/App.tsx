@@ -250,7 +250,7 @@ function App() {
 
     const fetchArtistGenres = useCallback(async (artists: Artist[]) => {
         const artistsWithoutGenres = artists.filter(artist => !artist.genres || artist.genres.length === 0);
-        const batchSize = 50; // Spotify API limit
+        const batchSize = 50;
 
         if (artistsWithoutGenres.length === 0) return artists;
 
@@ -369,6 +369,12 @@ function App() {
             {
                 accessorKey: 'genres' as const,
                 header: () => 'Genres',
+                filterFn: (row, columnId, filterValue) => {
+                    const genres: string[] = row.getValue(columnId) || [];
+                    if (!filterValue) return true;
+                    const filter = (filterValue as string).toLowerCase();
+                    return genres.some(g => g.toLowerCase().includes(filter));
+                },
                 cell: (info: CellContext<Artist, unknown>) => {
                     const genres = (info.getValue() as string[]) || [];
                     return (
