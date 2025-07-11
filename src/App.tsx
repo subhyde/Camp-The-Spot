@@ -236,8 +236,8 @@ function App() {
 
         while (total === null || offset < total) {
             const resp = await spotifyApi.getMySavedTracks({limit, offset});
-                total = resp.total;
-                setProgress({current: 0, total, stage: 'tracks'});
+            total = resp.total;
+            setProgress({current: 0, total, stage: 'tracks'});
 
             if (!resp.items || resp.items.length === 0) break;
             allTracks.push(...resp.items);
@@ -321,13 +321,21 @@ function App() {
             localStorage.setItem('cached_artists', JSON.stringify(artistsArray));
             localStorage.setItem('cache_timestamp', Date.now().toString());
         } catch (error) {
-            console.error('Error fetching artists:', error);
+            console.error('Error fetching artists:', error.status);
             alert('Failed to fetch artists. Please try again.');
+            if( error.status === 401) {
+                removeAuthStatus();
+            }
         } finally {
             setLoading(false);
             setProgress(null);
         }
     }, [fetchAllSavedTracks, fetchArtistGenres]);
+
+    const removeAuthStatus = () =>{
+        localStorage.removeItem('spotify_access_token');
+        setAuthenticated(false);
+    }
 
     const handleClearCache = () => {
         if (window.confirm('Are you sure you want to clear the cache? This will remove all stored artist data and you will need to reload from Spotify.')) {
@@ -439,6 +447,27 @@ function App() {
                         </h1>
                         <p className="text-xl text-white/80 mb-6">
                             Support the artists you love on Spotify by finding them on Bandcamp!
+                        </p>
+                        <p className="text-xl text-white/80 mb-6">
+                          Built by{' '}
+                          <a
+                            href="https://github.com/subhyde"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline hover:text-white"
+                          >
+                            Subhyde
+                          </a>
+                          .&nbsp;View source code{' '}
+                          <a
+                            href="https://github.com/subhyde/Camp-The-Spot"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline hover:text-white"
+                          >
+                            here
+                          </a>
+                          .
                         </p>
                     </div>
 

@@ -1,69 +1,32 @@
-# React + TypeScript + Vite
+# 🎵 Camp the Spot ⛺️
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**A free web app for Spotify users who want to find their favorite artists on Bandcamp.**
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Try it: [https://subhyde.github.io/Camp-The-Spot/](https://subhyde.github.io/Camp-The-Spot/)
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## What is this?
+Camp the Spot is a simple tool I made because I wanted an easier way to find my Spotify artists on Bandcamp. If you like collecting music (vinyl, cassettes, CDs, or just digital), this might help you too.
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## How does it work?
+- You sign in with Spotify.
+- The app grabs your liked songs and artists.
+- It groups your artists and gives you a link to search for each one on Bandcamp.
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## Why?
+I got tired of searching for every artist by hand on Bandcamp. This just makes it faster.
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Privacy
+- Everything runs in your browser. Nothing is saved or sent anywhere.
+- The Bandcamp links just open a search page for the artist.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+---
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+If you want to try it, here's the link again:
+[https://subhyde.github.io/Camp-The-Spot/](https://subhyde.github.io/Camp-The-Spot/)
+
+If you find it useful or have ideas, open an issue!
