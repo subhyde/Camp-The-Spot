@@ -1,279 +1,648 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import {useCallback, useEffect, useMemo, useState} from 'react';
 import SpotifyWebApi from 'spotify-web-api-js';
-import { useReactTable, getCoreRowModel, getSortedRowModel, getFilteredRowModel, flexRender } from '@tanstack/react-table';
-import { motion } from 'framer-motion';
+import {
+    type CellContext,
+    type ColumnFiltersState,
+    flexRender,
+    getCoreRowModel,
+    getFilteredRowModel,
+    getSortedRowModel,
+    useReactTable
+} from '@tanstack/react-table';
+import {motion} from 'framer-motion';
 import './index.css';
 
 const spotifyApi = new SpotifyWebApi();
 const CLIENT_ID = 'b4a1fb11d6994e8c980267fb62baa4f7';
 const CALLBACK_URL = "https://subhyde.github.io/Camp-The-Spot/";
 
+interface Artist {
+    id: string;
+    name: string;
+    savedCount: number;
+    genres?: string[];
+}
+
+interface ProgressInfo {
+    current: number;
+    total: number;
+    stage: 'tracks' | 'genres';
+}
+
+interface SpotifyTrack {
+    track: {
+        artists: Array<{
+            id: string;
+            name: string;
+        }>;
+    };
+}
+
+interface SpotifyArtistResponse {
+    artists: Array<{
+        id: string;
+        name: string;
+        genres: string[];
+    }>;
+}
+
 // --- PKCE helpers ---
 function base64UrlEncode(str: ArrayBuffer) {
-  return btoa(String.fromCharCode(...new Uint8Array(str)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+    return btoa(String.fromCharCode(...new Uint8Array(str)))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
 }
+
 async function sha256(plain: string) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(plain);
-  return await window.crypto.subtle.digest('SHA-256', data);
+    const encoder = new TextEncoder();
+    const data = encoder.encode(plain);
+    return await window.crypto.subtle.digest('SHA-256', data);
 }
+
 async function generateCodeChallenge(codeVerifier: string) {
-  const hashed = await sha256(codeVerifier);
-  return base64UrlEncode(hashed);
+    const hashed = await sha256(codeVerifier);
+    return base64UrlEncode(hashed);
 }
+
 function generateCodeVerifier(length = 128) {
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-  let verifier = '';
-  for (let i = 0; i < length; i++) {
-    verifier += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return verifier;
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+    let verifier = '';
+    for (let i = 0; i < length; i++) {
+        verifier += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return verifier;
+}
+
+function ProgressBar({current, total, stage}: ProgressInfo) {
+    const percentage = Math.round((current / total) * 100);
+    return (
+        <div className="w-full max-w-md mx-auto">
+            <div className="flex justify-between text-sm text-indigo-200 mb-2">
+        <span>
+          {stage === 'tracks' ? 'Loading tracks' : 'Fetching genres'}: {current} / {total}
+        </span>
+                <span>{percentage}%</span>
+            </div>
+            <div className="w-full bg-white/20 rounded-full h-3 backdrop-blur-sm">
+                <motion.div
+                    className="bg-blue-200  h-3 rounded-full shadow-lg"
+                    initial={{width: 0}}
+                    animate={{width: `${percentage}%`}}
+                    transition={{duration: 0.3}}
+                />
+            </div>
+        </div>
+    );
+}
+
+function GlassCard({children, className = ""}: { children: React.ReactNode; className?: string }) {
+    return (
+        <div className={`backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl shadow-2xl ${className}`}>
+            {children}
+        </div>
+    );
 }
 
 function App() {
-  const [authenticated, setAuthenticated] = useState(false);
-  const [allArtists, setAllArtists] = useState<{ name: string; savedCount: number }[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [globalFilter, setGlobalFilter] = useState('');
-  const [pkceReady, setPkceReady] = useState(false);
-  const [codeVerifier, setCodeVerifier] = useState<string | null>(null);
+    const [authenticated, setAuthenticated] = useState(false);
+    const [allArtists, setAllArtists] = useState<Artist[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [progress, setProgress] = useState<ProgressInfo | null>(null);
+    const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+    const [manualCode, setManualCode] = useState('');
+    const [showManualInput, setShowManualInput] = useState(false);
+    const [minTracks, setMinTracks] = useState<string>('1');
 
-  useEffect(() => {
-    // PKCE: check for code in URL
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
-    if (code) {
-      const storedVerifier = localStorage.getItem('pkce_code_verifier');
-      if (storedVerifier) {
-        setCodeVerifier(storedVerifier);
-        // Exchange code for token
-        fetchToken(code, storedVerifier);
-      }
-      return;
-    }
-    if (window.location.hash) {
-      window.location.hash
-        .slice(1)
-        .split('&')
-        .forEach(kv => {
-          const [key, value] = kv.split('=');
-          if (key === 'access_token') {
-            spotifyApi.setAccessToken(value);
-            setAuthenticated(true);
-            fetchArtists();
-          }
-        });
-    }
-    // eslint-disable-next-line
-  }, []);
-
-  async function authenticate() {
-    const verifier = generateCodeVerifier();
-    const challenge = await generateCodeChallenge(verifier);
-    localStorage.setItem('pkce_code_verifier', verifier);
-    setCodeVerifier(verifier);
-    const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      response_type: 'code',
-      redirect_uri: CALLBACK_URL,
-      scope: 'user-top-read user-library-read',
-      code_challenge_method: 'S256',
-      code_challenge: challenge,
-    });
-    window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
-  }
-
-  async function fetchToken(code: string, verifier: string) {
-    setLoading(true);
-    const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: CALLBACK_URL,
-      code_verifier: verifier,
-    });
-    const resp = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString(),
-    });
-    const data = await resp.json();
-    if (data.access_token) {
-      spotifyApi.setAccessToken(data.access_token);
-      setAuthenticated(true);
-      fetchArtists();
-      setLoading(false);
-    } else {
-      setLoading(false);
-      alert('Failed to authenticate with Spotify.');
-    }
-  }
-
-  const fetchAllSavedTracks = useCallback(async () => {
-    let allTracks = [];
-    let offset = 0;
-    const limit = 50;
-    let total = null;
-    while (total === null || offset < total) {
-      const resp = await spotifyApi.getMySavedTracks({ limit, offset });
-      if (total === null) total = resp.total;
-      if (!resp.items || resp.items.length === 0) break;
-      allTracks = allTracks.concat(resp.items);
-      offset += resp.items.length;
-    }
-    return allTracks;
-  }, []);
-
-  const fetchArtists = useCallback(async () => {
-    setLoading(true);
-    const tracks = await fetchAllSavedTracks();
-    const artistMap: { [id: string]: { name: string; savedCount: number } } = {};
-    tracks.forEach(trackObj => {
-      trackObj.track.artists.forEach(artist => {
-        if (!artistMap[artist.id]) {
-          artistMap[artist.id] = { name: artist.name, savedCount: 0 };
+    // Check for cached data on mount
+    useEffect(() => {
+        // PKCE: check for code in URL
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        if (code) {
+            const storedVerifier = localStorage.getItem('pkce_code_verifier');
+            if (storedVerifier) {
+                fetchToken(code, storedVerifier);
+            } else {
+                alert('Missing PKCE code verifier. Please try logging in again.');
+            }
+            return;
         }
-        artistMap[artist.id].savedCount += 1;
-      });
-    });
-    setAllArtists(Object.values(artistMap));
-    setLoading(false);
-  }, [fetchAllSavedTracks]);
 
-  const columns = useMemo<import('@tanstack/react-table').ColumnDef<{ name: string; savedCount: number }, any>[]>(
-    () => [
-      {
-        accessorKey: 'name',
-        header: () => 'Artist',
-        cell: info => info.getValue(),
-      },
-      {
-        accessorKey: 'savedCount',
-        header: () => '# Saved Tracks',
-        cell: info => info.getValue(),
-      },
-      {
-        id: 'bandcamp',
-        header: '',
-        cell: info => (
-          <button
-            className="px-3 py-1 rounded bg-indigo-500 text-white hover:bg-indigo-600 transition"
-            onClick={() => window.open(`https://bandcamp.com/search?q=${encodeURIComponent('"' + info.row.original.name + '"')}&item_type=b`, '_blank')}
-          >
-            Search on Bandcamp
-          </button>
-        ),
-      },
-    ],
-    []
-  );
+        // If already have a token in localStorage, use it
+        const storedToken = localStorage.getItem('spotify_access_token');
+        if (storedToken) {
+            spotifyApi.setAccessToken(storedToken);
+            setAuthenticated(true);
 
-  const data = useMemo(() => {
-    let filtered = allArtists;
-    if (globalFilter) {
-      filtered = filtered.filter(row =>
-        row.name.toLowerCase().includes(globalFilter.toLowerCase())
-      );
+            // Check for cached artists
+            const cachedArtists = localStorage.getItem('cached_artists');
+            if (cachedArtists) {
+                try {
+                    setAllArtists(JSON.parse(cachedArtists));
+                } catch (e) {
+                    console.error('Failed to parse cached artists:', e);
+                }
+            }
+        }
+        // eslint-disable-next-line
+    }, []);
+
+    async function authenticate() {
+        const verifier = generateCodeVerifier();
+        const challenge = await generateCodeChallenge(verifier);
+        localStorage.setItem('pkce_code_verifier', verifier);
+        const params = new URLSearchParams({
+            client_id: CLIENT_ID,
+            response_type: 'code',
+            redirect_uri: CALLBACK_URL,
+            scope: 'user-library-read',
+            code_challenge_method: 'S256',
+            code_challenge: challenge,
+            state: Math.random().toString(36).substring(2, 15),
+        });
+
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            setShowManualInput(true);
+            window.open(`https://accounts.spotify.com/authorize?${params.toString()}`, '_blank');
+        } else {
+            window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
+        }
     }
-    return filtered.sort((a, b) => b.savedCount - a.savedCount);
-  }, [allArtists, globalFilter]);
 
-  // TanStack Table v8 API
-  const table = useReactTable({
-    data,
-    columns,
-    state: { globalFilter },
-    onGlobalFilterChange: setGlobalFilter,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    debugTable: false,
-  });
+    async function handleManualCodeSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        const storedVerifier = localStorage.getItem('pkce_code_verifier');
+        if (!storedVerifier) {
+            alert('Missing PKCE code verifier. Please try logging in again.');
+            return;
+        }
+        if (!manualCode) {
+            alert('Please enter the code from the redirect URL.');
+            return;
+        }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-indigo-900 flex items-center justify-center p-4">
-      <motion.div
-        className="w-full max-w-3xl bg-white/90 rounded-xl shadow-xl p-8"
-        initial={{ opacity: 0, y: 40 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        <h1 className="text-4xl font-bold text-center mb-2 text-indigo-700">Camp The Spot</h1>
-        <p className="text-center text-lg mb-6 text-slate-700">
-          Support the artists you love on Spotify by finding them on Bandcamp!
-        </p>
-        {!authenticated && (
-          <div className="flex flex-col items-center">
-            <button
-              className="px-6 py-3 rounded bg-green-600 text-white text-lg font-semibold hover:bg-green-700 transition mb-2"
-              onClick={authenticate}
-            >
-              Authenticate with Spotify
-            </button>
-            <p className="text-slate-500 text-sm">We never store your data.</p>
-          </div>
-        )}
-        {authenticated && (
-          <button
-            className="px-6 py-3 rounded bg-indigo-600 text-white text-lg font-semibold hover:bg-indigo-700 transition mb-6"
-            onClick={fetchArtists}
-            disabled={loading}
-          >
-            {loading ? 'Loading Artists...' : 'Refresh Artists'}
-          </button>
-        )}
-        {loading && (
-          <div className="flex flex-col items-center my-8">
-            <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-            <span className="text-indigo-700">Loading your saved tracks and artists...</span>
-          </div>
-        )}
-        {authenticated && !loading && allArtists.length > 0 && (
-          <div className="overflow-x-auto mt-4">
-            <input
-              className="mb-4 px-3 py-2 border rounded w-full focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              placeholder="Filter artists..."
-              value={globalFilter}
-              onChange={e => setGlobalFilter(e.target.value)}
-            />
-            <table className="min-w-full border rounded shadow text-left">
-              <thead className="bg-indigo-100">
-                {table.getHeaderGroups().map(headerGroup => (
-                  <tr key={headerGroup.id}>
-                    {headerGroup.headers.map(header => (
-                      <th
-                        key={header.id}
-                        className="py-2 px-4 font-semibold cursor-pointer select-none"
-                        onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
-                      >
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                        {header.column.getIsSorted() === 'asc' && ' ▲'}
-                        {header.column.getIsSorted() === 'desc' && ' ▼'}
-                      </th>
-                    ))}
-                  </tr>
-                ))}
-              </thead>
-              <tbody>
-                {table.getRowModel().rows.map(row => (
-                  <tr key={row.id} className="border-b hover:bg-indigo-50 transition">
-                    {row.getVisibleCells().map(cell => (
-                      <td key={cell.id} className="py-2 px-4">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </motion.div>
-    </div>
-  );
+        let codeToUse = manualCode;
+        if (manualCode.includes('code=')) {
+            const urlParams = new URLSearchParams(manualCode.split('?')[1]);
+            codeToUse = urlParams.get('code') || manualCode;
+        }
+
+        fetchToken(codeToUse, storedVerifier);
+        setShowManualInput(false);
+        setManualCode('');
+    }
+
+    async function fetchToken(code: string, verifier: string) {
+        setLoading(true);
+        const params = new URLSearchParams({
+            client_id: CLIENT_ID,
+            grant_type: 'authorization_code',
+            code,
+            redirect_uri: CALLBACK_URL,
+            code_verifier: verifier,
+        });
+
+        try {
+            const resp = await fetch('https://accounts.spotify.com/api/token', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: params.toString(),
+            });
+            const data = await resp.json();
+
+            if (data.access_token) {
+                spotifyApi.setAccessToken(data.access_token);
+                setAuthenticated(true);
+                localStorage.setItem('spotify_access_token', data.access_token);
+                await fetchArtists();
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } else {
+                alert('Failed to authenticate with Spotify.');
+            }
+        } catch (error) {
+            console.error('Authentication error:', error);
+            alert('Failed to authenticate with Spotify.');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    const fetchAllSavedTracks = useCallback(async () => {
+        const allTracks: SpotifyTrack[] = [];
+        let offset = 0;
+        const limit = 50;
+        let total: number | null = null;
+
+        while (total === null || offset < total) {
+            const resp = await spotifyApi.getMySavedTracks({limit, offset});
+                total = resp.total;
+                setProgress({current: 0, total, stage: 'tracks'});
+
+            if (!resp.items || resp.items.length === 0) break;
+            allTracks.push(...resp.items);
+            offset += resp.items.length;
+
+            setProgress({current: offset, total, stage: 'tracks'});
+        }
+        return allTracks;
+    }, []);
+
+    const fetchArtistGenres = useCallback(async (artists: Artist[]) => {
+        const artistsWithoutGenres = artists.filter(artist => !artist.genres || artist.genres.length === 0);
+        const batchSize = 50; // Spotify API limit
+
+        if (artistsWithoutGenres.length === 0) return artists;
+
+        setProgress({current: 0, total: artistsWithoutGenres.length, stage: 'genres'});
+
+        for (let i = 0; i < artistsWithoutGenres.length; i += batchSize) {
+            const batch = artistsWithoutGenres.slice(i, i + batchSize);
+            const ids = batch.map(artist => artist.id);
+
+            try {
+                const resp: SpotifyArtistResponse = await spotifyApi.getArtists(ids);
+                resp.artists.forEach((spotifyArtist, index: number) => {
+                    const artist = batch[index];
+                    if (artist && spotifyArtist) {
+                        artist.genres = spotifyArtist.genres || [];
+                    }
+                });
+
+                setProgress({
+                    current: Math.min(i + batchSize, artistsWithoutGenres.length),
+                    total: artistsWithoutGenres.length,
+                    stage: 'genres'
+                });
+
+                // Small delay to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 100));
+            } catch (error) {
+                console.error('Error fetching artist genres:', error);
+                break;
+            }
+        }
+
+        return artists;
+    }, []);
+
+    const fetchArtists = useCallback(async (forceRefresh = false) => {
+        if (!forceRefresh && allArtists.length > 0) return;
+
+        setLoading(true);
+        setProgress(null);
+
+        try {
+            const tracks = await fetchAllSavedTracks();
+            const artistMap: { [id: string]: Artist } = {};
+
+            tracks.forEach((trackObj: SpotifyTrack) => {
+                trackObj.track.artists.forEach((artist) => {
+                    if (!artistMap[artist.id]) {
+                        artistMap[artist.id] = {
+                            id: artist.id,
+                            name: artist.name,
+                            savedCount: 0,
+                            genres: undefined
+                        };
+                    }
+                    artistMap[artist.id].savedCount += 1;
+                });
+            });
+
+            let artistsArray = Object.values(artistMap);
+
+            // Fetch genres if enabled
+            artistsArray = await fetchArtistGenres(artistsArray);
+
+            setAllArtists(artistsArray);
+
+            // Cache the results and genre setting
+            localStorage.setItem('cached_artists', JSON.stringify(artistsArray));
+            localStorage.setItem('cache_timestamp', Date.now().toString());
+        } catch (error) {
+            console.error('Error fetching artists:', error);
+            alert('Failed to fetch artists. Please try again.');
+        } finally {
+            setLoading(false);
+            setProgress(null);
+        }
+    }, [fetchAllSavedTracks, fetchArtistGenres]);
+
+    const handleClearCache = () => {
+        if (window.confirm('Are you sure you want to clear the cache? This will remove all stored artist data and you will need to reload from Spotify.')) {
+            localStorage.removeItem('cached_artists');
+            localStorage.removeItem('cache_timestamp');
+            setAllArtists([]);
+        }
+    };
+
+
+    const columns = useMemo(
+        () => [
+            {
+                accessorKey: 'savedCount' as const,
+                header: () => '# Saved Tracks',
+                cell: (info: CellContext<Artist, unknown>) => (
+                    <span
+                        className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/80 text-white border border-emerald-400/50">
+            {info.getValue() as number}
+          </span>
+                ),
+            },
+            {
+                accessorKey: 'name' as const,
+                header: () => 'Artist',
+                cell: (info: CellContext<Artist, unknown>) => (
+                    <span className="font-medium text-white">{info.getValue() as string}</span>
+                ),
+            },
+
+            {
+                accessorKey: 'genres' as const,
+                header: () => 'Genres',
+                cell: (info: CellContext<Artist, unknown>) => {
+                    const genres = (info.getValue() as string[]) || [];
+                    return (
+                        <div className="flex flex-wrap gap-1">
+                            {genres.map((genre: string, index: number) => (
+                                <span
+                                    key={index}
+                                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-violet-500/80 text-white border border-violet-400/50"
+                                >
+                  {genre}
+                </span>
+                            ))}
+                            {genres.length === 0 && (
+                                <span className="text-xs text-white/50 italic">No genres available</span>
+                            )}
+                        </div>
+                    );
+                },
+            },
+            {
+                id: 'bandcamp',
+                header: () => 'Bandcamp',
+                cell: (info: CellContext<Artist, unknown>) => (
+                    <button
+                        className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white text-sm font-medium hover:from-orange-600 hover:to-red-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 border border-orange-400/50"
+                        onClick={() => window.open(`https://bandcamp.com/search?q=${encodeURIComponent('"' + info.row.original.name + '"')}&item_type=b`, '_blank')}
+                    >
+                        🎵 Bandcamp
+                    </button>
+                ),
+            },
+        ],
+        []
+    );
+
+    const data = useMemo(() => {
+        const minTracksNumber = parseInt(minTracks) || 1;
+        return allArtists
+            .filter(artist => artist.savedCount >= minTracksNumber)
+            .sort((a, b) => b.savedCount - a.savedCount);
+    }, [allArtists, minTracks]);
+
+    const table = useReactTable({
+        data,
+        columns,
+        state: {
+            columnFilters,
+        },
+        onColumnFiltersChange: setColumnFilters,
+        getCoreRowModel: getCoreRowModel(),
+        getSortedRowModel: getSortedRowModel(),
+        getFilteredRowModel: getFilteredRowModel(),
+        debugTable: false,
+    });
+
+    const cacheTimestamp = localStorage.getItem('cache_timestamp');
+    const cacheAge = cacheTimestamp ? Math.round((Date.now() - parseInt(cacheTimestamp)) / (1000 * 60 * 60)) : 0;
+
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-4">
+            {/* Animated background elements */}
+            <div className="fixed inset-0 overflow-hidden pointer-events-none">
+                <div
+                    className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
+                <div
+                    className="absolute -bottom-40 -left-40 w-80 h-80 bg-indigo-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse animation-delay-2000"></div>
+                <div
+                    className="absolute top-40 left-40 w-80 h-80 bg-pink-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse animation-delay-4000"></div>
+            </div>
+
+            <div className="relative z-10 max-w-7xl mx-auto">
+                <GlassCard className="p-8 mb-8">
+                    <div className="text-center">
+                        <h1 className="text-5xl font-bold bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent mb-4">
+                            Camp The Spot
+                        </h1>
+                        <p className="text-xl text-white/80 mb-6">
+                            Support the artists you love on Spotify by finding them on Bandcamp!
+                        </p>
+                    </div>
+
+                    {!authenticated && (
+                        <div className="flex flex-col items-center space-y-6">
+                            <motion.button
+                                className="px-8 py-4 rounded-2xl bg-gradient-to-r from-green-500 to-emerald-600 text-white text-lg font-semibold shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 border border-green-400/50"
+                                onClick={authenticate}
+                                whileHover={{scale: 1.05}}
+                                whileTap={{scale: 0.95}}
+                            >
+                                🎵 Connect to Spotify
+                            </motion.button>
+
+                            {showManualInput && (
+                                <motion.div
+                                    initial={{opacity: 0, scale: 0.9}}
+                                    animate={{opacity: 1, scale: 1}}
+                                    className="w-full max-w-md"
+                                >
+                                    <GlassCard className="p-6">
+                                        <h3 className="text-lg font-semibold mb-3 text-white">Enter Authorization
+                                            Code</h3>
+                                        <p className="text-sm text-white/70 mb-4">
+                                            Copy the entire URL from the redirect page or just the 'code' parameter.
+                                        </p>
+                                        <form onSubmit={handleManualCodeSubmit} className="space-y-4">
+                                            <input
+                                                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl backdrop-blur-sm placeholder-white/50 text-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                                placeholder="Paste code here..."
+                                                value={manualCode}
+                                                onChange={e => setManualCode(e.target.value)}
+                                                required
+                                            />
+                                            <button
+                                                className="w-full px-4 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-semibold hover:from-blue-600 hover:to-cyan-600 transition-all duration-200 border border-blue-400/50"
+                                                type="submit"
+                                            >
+                                                Submit Code
+                                            </button>
+                                        </form>
+                                    </GlassCard>
+                                </motion.div>
+                            )}
+
+                            <p className="text-white/60 text-sm">🔒 We never store your data</p>
+                        </div>
+                    )}
+
+                    {authenticated && (
+                        <div className="flex flex-col items-center space-y-4">
+                            <div className="flex flex-wrap gap-4 justify-center">
+                                <motion.button
+                                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed border border-blue-400/50"
+                                    onClick={() => fetchArtists(true)}
+                                    disabled={loading}
+                                    whileHover={{scale: 1.05}}
+                                    whileTap={{scale: 0.95}}
+                                >
+                                    {loading ? '🔄 Loading...' : '🔄 Refresh Data'}
+                                </motion.button>
+
+                                <motion.button
+                                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-red-500 to-pink-600 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 border border-red-400/50"
+                                    onClick={handleClearCache}
+                                    whileHover={{scale: 1.05}}
+                                    whileTap={{scale: 0.95}}
+                                >
+                                    🗑️ Clear Cache
+                                </motion.button>
+                            </div>
+                            <p className="text-sm text-white/70">
+                                {cacheAge > 0 ? (
+                                    <span
+                                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/10 border border-white/20">
+      <span className="text-purple-200">🕒 Cache age:</span>
+                                        {cacheAge === 1 ? '1 hour' : `${cacheAge} hours`} old
+    </span>
+                                ) : null}
+                            </p>
+                        </div>
+                    )}
+
+                    {loading && progress && (
+                        <div className="mt-8">
+                            <ProgressBar {...progress} />
+                        </div>
+                    )}
+                </GlassCard>
+
+                {authenticated && allArtists.length > 0 && (
+                    <GlassCard className="p-6">
+                        <div className="mb-6">
+                            <h2 className="text-2xl font-bold text-white mb-4 text-center">
+                                Your Artists ({table.getFilteredRowModel().rows.length} shown)
+                            </h2>
+
+                            {/* Enhanced Filter Controls */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                <div className="space-y-2">
+                                    <label className="block text-sm font-medium text-white">Filter by Artist</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={(table.getColumn('name')?.getFilterValue() as string) ?? ''}
+                                            onChange={e => table.getColumn('name')?.setFilterValue(e.target.value)}
+                                            placeholder="Search artist names..."
+                                            className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-xl backdrop-blur-sm placeholder-white/50 text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                                        />
+                                        <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                                            <span className="text-white/40">🎤</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="block text-sm font-medium text-white">Minimum Tracks</label>
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            value={minTracks}
+                                            onChange={e => setMinTracks(e.target.value)}
+                                            placeholder="Min tracks..."
+                                            className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-xl backdrop-blur-sm placeholder-white/50 text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                                        />
+                                        <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                                            <span className="text-white/40">#</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="block text-sm font-medium text-white">Filter by Genre</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={(table.getColumn('genres')?.getFilterValue() as string) ?? ''}
+                                            onChange={e => table.getColumn('genres')?.setFilterValue(e.target.value)}
+                                            placeholder="Search genres..."
+                                            className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-xl backdrop-blur-sm placeholder-white/50 text-white focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                                        />
+                                        <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                                            <span className="text-white/40">🎵</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <div className="max-h-[70vh] overflow-y-auto custom-scrollbar">
+                                <table className="min-w-full">
+                                    <thead
+                                        className="sticky top-0 bg-gradient-to-r from-indigo-800 to-purple-800 backdrop-blur-sm border-b border-white/30">
+                                    {table.getHeaderGroups().map(headerGroup => (
+                                        <tr key={headerGroup.id}>
+                                            {headerGroup.headers.map(header => (
+                                                <th
+                                                    key={header.id}
+                                                    className="px-4 py-3 text-left text-sm font-semibold text-white uppercase tracking-wider cursor-pointer hover:bg-white/10 transition-colors"
+                                                    onClick={header.column.getToggleSortingHandler()}
+                                                >
+                                                    <div className="flex items-center space-x-2">
+                                                        {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                                                        {header.column.getIsSorted() && (
+                                                            <span className="text-purple-300">
+                                        {header.column.getIsSorted() === 'desc' ? ' ↓' : ' ↑'}
+                                      </span>
+                                                        )}
+                                                    </div>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                    </thead>
+                                    <tbody className="divide-y divide-white/10">
+                                    {table.getRowModel().rows.map((row) => (
+                                        <tr
+                                            key={row.id}
+                                            className="hover:bg-white/10 transition-colors"
+                                        >
+                                            {row.getVisibleCells().map(cell => (
+                                                <td key={cell.id} className="px-4 py-3 text-sm">
+                                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {table.getFilteredRowModel().rows.length === 0 && (
+                            <div className="text-center py-8">
+                                <p className="text-white/60">No artists match your current filters</p>
+                            </div>
+                        )}
+                    </GlassCard>
+                )}
+            </div>
+        </div>
+    );
 }
 
 export default App;

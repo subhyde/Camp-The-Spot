@@ -2,3 +2,236 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom animations for background elements */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+/* Enhanced glassmorphism effect */
+.backdrop-blur-xl {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* Custom scrollbar styles - improved design */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(168, 85, 247, 0.6) rgba(255, 255, 255, 0.1);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.8), rgba(139, 92, 246, 0.6));
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 1), rgba(139, 92, 246, 0.8));
+  box-shadow: 0 4px 8px rgba(168, 85, 247, 0.3);
+}
+
+.custom-scrollbar::-webkit-scrollbar-corner {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Global scrollbar for webkit browsers */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.6), rgba(139, 92, 246, 0.4));
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.8), rgba(139, 92, 246, 0.6));
+}
+
+/* Smooth transitions for all interactive elements */
+* {
+  transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Enhanced focus states */
+input:focus, button:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.4);
+}
+
+/* Better text selection */
+::selection {
+  background-color: rgba(168, 85, 247, 0.3);
+  color: white;
+}
+
+/* Improved button hover effects */
+button:hover {
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+/* Table row animations */
+tbody tr {
+  transition: all 0.2s ease;
+}
+
+tbody tr:hover {
+  transform: translateX(4px);
+}
+
+/* Glass effect for inputs */
+input[type="text"] {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Loading spinner enhancement */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Progress bar glow effect */
+.progress-glow {
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.6);
+}
+
+/* Fixed table header styling to prevent mobile flash */
+.table-header {
+  background: rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* Virtualized table container optimizations */
+.virtualized-table-container {
+  will-change: scroll-position;
+  contain: layout style paint;
+  overflow-anchor: none;
+}
+
+/* Mobile responsive fixes */
+@media (max-width: 768px) {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .table-header {
+    font-size: 0.875rem;
+    padding: 0.75rem 0.5rem;
+  }
+
+  .virtualized-table-container {
+    height: 70vh !important;
+  }
+
+  /* Fix mobile table header background flash */
+  .table-header > div {
+    background: transparent !important;
+  }
+}
+
+/* Responsive design improvements */
+@media (max-width: 640px) {
+  .glass-card {
+    margin: 1rem;
+    padding: 1.5rem;
+  }
+
+  table {
+    font-size: 0.875rem;
+  }
+
+  .table-cell {
+    padding: 0.75rem 0.5rem;
+  }
+}
+
+/* Dark mode text color fixes */
+.text-gray-900 {
+  color: white !important;
+}
+
+/* Enhanced gradient text */
+.bg-gradient-to-r {
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+
+/* Card shadow enhancements */
+.shadow-2xl {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* Button gradient enhancements */
+.bg-gradient-to-r:hover {
+  background-size: 110% 110%;
+}
+
+/* Performance optimizations */
+.virtualized-row {
+  contain: layout style paint;
+  will-change: transform;
+}
+
+/* Smooth genre tag animations */
+.genre-tag {
+  transition: all 0.2s ease;
+}
+
+.genre-tag:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
+}
