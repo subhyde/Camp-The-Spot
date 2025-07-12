@@ -725,7 +725,16 @@ function App() {
             <div className="overflow-x-auto">
               <div className="max-h-[70vh] overflow-y-auto custom-scrollbar">
                 <table className="min-w-full">
-                  <thead className="sticky top-0 bg-gradient-to-r from-indigo-800 to-purple-800 backdrop-blur-sm border-b border-white/30">
+                  <thead
+                    className="sticky top-0 z-20"
+                    style={{
+                      background:
+                        "linear-gradient(90deg, rgba(124,58,237,0.92) 0%, rgba(168,85,247,0.92) 100%)",
+                      backdropFilter: "blur(12px)",
+                      boxShadow: "0 2px 16px 0 rgba(168,85,247,0.25)",
+                      borderBottom: "1px solid rgba(255,255,255,0.18)",
+                    }}
+                  >
                     {table.getHeaderGroups().map((headerGroup) => (
                       <tr key={headerGroup.id}>
                         {headerGroup.headers.map((header) => (
