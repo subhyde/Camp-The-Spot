@@ -21,6 +21,7 @@ interface Artist {
     name: string;
     savedCount: number;
     genres?: string[];
+    lastSaved?: string; // ISO date string
 }
 
 interface ProgressInfo {
@@ -36,6 +37,7 @@ interface SpotifyTrack {
             name: string;
         }>;
     };
+    added_at: string
 }
 
 interface SpotifyArtistResponse {
@@ -303,10 +305,13 @@ function App() {
                             id: artist.id,
                             name: artist.name,
                             savedCount: 0,
-                            genres: undefined
+                            genres: undefined,
                         };
                     }
                     artistMap[artist.id].savedCount += 1;
+                    if(!artistMap[artist.id].lastSaved || new Date(trackObj.added_at) > new Date(artistMap[artist.id].lastSaved)) {
+                        artistMap[artist.id].lastSaved = trackObj.added_at;
+                    }
                 });
             });
 
