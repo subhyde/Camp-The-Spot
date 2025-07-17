@@ -1,3 +1,17 @@
+# This app is DOA
+
+---
+Spotify just recerntly updated its developer terms and no longer provides extended api access to devs unless they have 250k MAU
+https://developer.spotify.com/documentation/web-api/concepts/quota-modes
+
+So if you are interested in using this app
+
+1) Clone this repo
+2) Create your own app https://developer.spotify.com/
+3) Change the callback uri to your github hosted app
+
+---
+
 # 🎵 Camp the Spot ⛺️
 
 **A free web app for Spotify users who want to find their favorite artists on Bandcamp.**
